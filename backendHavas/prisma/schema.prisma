@@ -1,0 +1,158 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
+  engineType      = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        RoleName @unique @default(AGENT_COLLAB)
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
+model User {
+  id                  Int                  @id @default(autoincrement())
+  firstname           String
+  lastname            String
+  email               String               @unique
+  password            String
+  phone               String
+  avatar              String?
+  isActive            Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  roleId              Int
+  collaboratorId     Int
+  auditLogs           AuditLog[]
+  importHistories     ImportHistory[]
+  passwordResetTokens PasswordResetToken[]
+  refreshTokens       RefreshToken[]
+  collaborator        Collaborator         @relation(fields: [collaboratorId], references: [id])
+  role                Role                 @relation(fields: [roleId], references: [id])
+}
+
+model Collaborator {
+  id          Int      @id @default(autoincrement())
+  companyName String
+  email       String   @unique
+  phone       String
+  address     String
+  city        String
+  country     String
+  logo        String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  folders     Folder[]
+  users       User[]
+}
+
+model Folder {
+  id             Int          @id @default(autoincrement())
+  name           String
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  collaboratorId Int
+  collaborator   Collaborator @relation(fields: [collaboratorId], references: [id])
+  qrCodes        QRCode[]
+}
+
+model QRCode {
+  id            Int           @id @default(autoincrement())
+  uuid          String        @unique
+  name          String
+  description   String?
+  logo          String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  folderId      Int
+  destinations  Destination[]
+  folder        Folder        @relation(fields: [folderId], references: [id])
+  scanHistories ScanHistory[]
+}
+
+model ScanHistory {
+  id              Int      @id @default(autoincrement())
+  ip              String
+  country         String?
+  city            String?
+  operatingSystem String?
+  device          String?
+  referer         String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+  qrCodeId        Int
+  qrCode          QRCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  action      String
+  entity      String
+  entityId    Int
+  description String
+  createdAt   DateTime @default(now())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Destination {
+  id        Int      @id @default(autoincrement())
+  title     String
+  url       String
+  createdAt DateTime @default(now())
+  qrCodeId  Int
+  qrCode    QRCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+}
+
+model ImportHistory {
+  id          Int      @id @default(autoincrement())
+  filename    String
+  totalRows   Int
+  successRows Int
+  errorRows   Int
+  status      Status   @default(ACCOMPLIE)
+  errors      String?
+  createdAt   DateTime @default(now())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Status {
+  ACCOMPLIE
+  AVORTEE
+}
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN_COLLAB
+  AGENT_COLLAB
+}
