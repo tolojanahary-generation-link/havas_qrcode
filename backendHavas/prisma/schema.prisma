@@ -23,18 +23,18 @@ model User {
   lastname            String
   email               String               @unique
   password            String
-  phone               String
+  phone               String?
   avatar              String?
   isActive            Boolean              @default(false)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   roleId              Int
-  collaboratorId     Int
+  collaboratorId     Int?
   auditLogs           AuditLog[]
   importHistories     ImportHistory[]
   passwordResetTokens PasswordResetToken[]
   refreshTokens       RefreshToken[]
-  collaborator        Collaborator         @relation(fields: [collaboratorId], references: [id])
+  collaborator        Collaborator?         @relation(fields: [collaboratorId], references: [id])
   role                Role                 @relation(fields: [roleId], references: [id])
 }
 
@@ -60,8 +60,8 @@ model Folder {
   description    String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  collaboratorId Int
-  collaborator   Collaborator @relation(fields: [collaboratorId], references: [id])
+  collaboratorId Int?
+  collaborator   Collaborator? @relation(fields: [collaboratorId], references: [id])
   qrCodes        QRCode[]
 }
 
