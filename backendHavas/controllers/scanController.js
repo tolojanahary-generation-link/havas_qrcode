@@ -92,8 +92,12 @@ export const registerScan = async (req, res, next) => {
       userAgent,
     });
 
+    if (!qrCode.destinations || qrCode.destinations.length === 0) {
+      return error(res, 'Ce QR code n\'a pas d\'URL de destination.', [], 404);
+    }
+
     // Redirect to destination URL
-    return res.redirect(302, qrCode.destinationUrl);
+    return res.redirect(302, qrCode.destinations[0].url);
   } catch (err) {
     next(err);
   }

@@ -18,9 +18,7 @@ export const createQRCodeRules = [
     .isLength({ max: 500 }).withMessage('La description ne doit pas dépasser 500 caractères.')
     .trim(),
 
-  body('type')
-    .notEmpty().withMessage('Le type de QR code est requis.')
-    .isIn(['static', 'dynamic']).withMessage('Le type doit être "static" ou "dynamic".'),
+
 
   body('destinationUrl')
     .notEmpty().withMessage('L\'URL de destination est requise.')
@@ -31,16 +29,8 @@ export const createQRCodeRules = [
     .isInt({ min: 1 }).withMessage('L\'identifiant du collaborator doit être un entier positif.'),
 
   body('folderId')
-    .optional()
+    .notEmpty().withMessage('L\'identifiant du dossier est requis.')
     .isInt({ min: 1 }).withMessage('L\'identifiant du dossier doit être un entier positif.'),
-
-  body('color')
-    .optional()
-    .matches(/^#[0-9A-Fa-f]{6}$/).withMessage('La couleur doit être au format hexadécimal (#RRGGBB).'),
-
-  body('backgroundColor')
-    .optional()
-    .matches(/^#[0-9A-Fa-f]{6}$/).withMessage('La couleur de fond doit être au format hexadécimal (#RRGGBB).'),
 ];
 
 /**
@@ -60,9 +50,6 @@ export const updateQRCodeRules = [
     .isLength({ max: 500 }).withMessage('La description ne doit pas dépasser 500 caractères.')
     .trim(),
 
-  body('type')
-    .optional()
-    .isIn(['static', 'dynamic']).withMessage('Le type doit être "static" ou "dynamic".'),
 
   body('destinationUrl')
     .optional()
@@ -71,14 +58,6 @@ export const updateQRCodeRules = [
   body('folderId')
     .optional()
     .isInt({ min: 1 }).withMessage('L\'identifiant du dossier doit être un entier positif.'),
-
-  body('color')
-    .optional()
-    .matches(/^#[0-9A-Fa-f]{6}$/).withMessage('La couleur doit être au format hexadécimal (#RRGGBB).'),
-
-  body('backgroundColor')
-    .optional()
-    .matches(/^#[0-9A-Fa-f]{6}$/).withMessage('La couleur de fond doit être au format hexadécimal (#RRGGBB).'),
 ];
 
 /**

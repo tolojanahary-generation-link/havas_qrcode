@@ -30,30 +30,23 @@ const buildRedirectUrl = (uuid) => `${QR_BASE_URL}/${uuid}`;
 export const createQRCode = async (req, res, next) => {
   try {
     const {
-      name, description, type, destinationUrl,
-      collaboratorId, folderId, color, backgroundColor, logo,
+      name, description, folderId, logo, destinationUrl
     } = req.body;
 
     const uuid = uuidv4();
-    const redirectUrl = type === 'dynamic' ? buildRedirectUrl(uuid) : destinationUrl;
-
-    // Determine final collaboratorId based on role
-    const finalCollaboratorId = isSuperAdmin(req.user) 
-      ? (collaboratorId ? parseInt(collaboratorId, 10) : null)
-      : req.user.collaboratorId;
 
     const qrCode = await qrcodeService.createQRCode({
       uuid,
       name,
       description: description || null,
-      type,
-      destinationUrl,
-      redirectUrl,
-      color: color || '#000000',
-      backgroundColor: backgroundColor || '#FFFFFF',
       logo: logo || null,
-      collaboratorId: finalCollaboratorId,
-      folderId: folderId ? parseInt(folderId, 10) : null,
+      folderId: parseInt(folderId, 10), // folderId is now required
+      destinations: {
+        create: {
+          title: "Lien par défaut",
+          url: destinationUrl,
+        }
+      }
     });
 
     // Audit log
@@ -61,7 +54,7 @@ export const createQRCode = async (req, res, next) => {
       action: 'CREATE',
       entity: 'QRCode',
       entityId: qrCode.id,
-      description: `Création du QR code "${name}" (${type})`,
+      description: `Création du QR code "${name}"`,
       userId: req.user.id,
       qrCodeId: qrCode.id,
     });
@@ -94,8 +87,8 @@ export const createBulkQRCodesFromExcel = async (req, res, next) => {
       return error(res, 'Le fichier Excel est vide.', [], 400);
     }
 
-    // Validate required columns (collaboratorId is optional)
-    const requiredColumns = ['name', 'destinationUrl', 'type'];
+    // Validate required columns
+    const requiredColumns = ['name', 'destinationUrl'];
     const headers = Object.keys(rows[0]);
     const missingColumns = requiredColumns.filter((col) => !headers.includes(col));
 
@@ -117,36 +110,25 @@ export const createBulkQRCodesFromExcel = async (req, res, next) => {
       const rowNum = i + 2; // Excel row number (1-indexed + header)
 
       // Validate row
-      if (!row.name || !row.destinationUrl || !row.type) {
-        errors.push({ row: rowNum, message: 'Données incomplètes (name, destinationUrl, ou type manquants)' });
-        continue;
-      }
-
-      if (!['static', 'dynamic'].includes(row.type)) {
-        errors.push({ row: rowNum, message: `Type invalide : "${row.type}". Doit être "static" ou "dynamic".` });
+      if (!row.name || !row.destinationUrl) {
+        errors.push({ row: rowNum, message: 'Données incomplètes (name, destinationUrl manquants)' });
         continue;
       }
 
       const uuid = uuidv4();
-      const redirectUrl = row.type === 'dynamic' ? buildRedirectUrl(uuid) : row.destinationUrl;
-
-      // Determine final collaboratorId based on role
-      const finalCollaboratorId = isSuperAdmin(req.user) 
-        ? (row.collaboratorId ? parseInt(row.collaboratorId, 10) : null)
-        : req.user.collaboratorId;
 
       qrCodesData.push({
         uuid,
         name: String(row.name),
         description: row.description ? String(row.description) : null,
-        type: row.type,
-        destinationUrl: String(row.destinationUrl),
-        redirectUrl,
-        color: row.color || '#000000',
-        backgroundColor: row.backgroundColor || '#FFFFFF',
         logo: row.logo || null,
-        collaboratorId: finalCollaboratorId,
         folderId: row.folderId ? parseInt(row.folderId, 10) : null,
+        destinations: {
+            create: {
+                title: "Lien par défaut",
+                url: row.destinationUrl
+            }
+        }
       });
     }
 
@@ -194,18 +176,14 @@ export const getQRCodes = async (req, res, next) => {
         { name: { contains: req.query.search, mode: 'insensitive' } },
         { description: { contains: req.query.search, mode: 'insensitive' } },
         { uuid: { contains: req.query.search, mode: 'insensitive' } },
-        { destinationUrl: { contains: req.query.search, mode: 'insensitive' } },
+        { destinations: { some: { url: { contains: req.query.search, mode: 'insensitive' } } } },
       ];
-    }
-
-    if (req.query.type) {
-      filters.type = req.query.type;
     }
 
     // Only allow SUPER_ADMIN to filter by a specific collaboratorId query param
     // If not SUPER_ADMIN, scopeFilters already forces the correct condition
     if (isSuperAdmin(req.user) && req.query.collaboratorId) {
-      filters.collaboratorId = parseInt(req.query.collaboratorId, 10);
+      filters.folder = { collaboratorId: parseInt(req.query.collaboratorId, 10) };
     }
 
     if (req.query.folderId) {
@@ -268,39 +246,14 @@ export const updateQRCode = async (req, res, next) => {
       return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
     }
 
-    const { name, description, type, destinationUrl, folderId, color, backgroundColor, logo, collaboratorId } = req.body;
+    const { name, description, folderId, logo } = req.body;
 
     // Build update data
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
-    if (color !== undefined) updateData.color = color;
-    if (backgroundColor !== undefined) updateData.backgroundColor = backgroundColor;
     if (logo !== undefined) updateData.logo = logo;
     if (folderId !== undefined) updateData.folderId = folderId ? parseInt(folderId, 10) : null;
-    
-    // Only SUPER_ADMIN can change the collaboratorId of an existing qrcode
-    if (collaboratorId !== undefined && isSuperAdmin(req.user)) {
-      updateData.collaboratorId = collaboratorId ? parseInt(collaboratorId, 10) : null;
-    }
-
-    // Handle type change
-    if (type !== undefined) {
-      updateData.type = type;
-      if (type === 'dynamic') {
-        updateData.redirectUrl = buildRedirectUrl(existingQRCode.uuid);
-      } else if (type === 'static') {
-        updateData.redirectUrl = destinationUrl || existingQRCode.destinationUrl;
-      }
-    }
-
-    // Handle destination URL change
-    if (destinationUrl !== undefined) {
-      updateData.destinationUrl = destinationUrl;
-      if ((type || existingQRCode.type) === 'static') {
-        updateData.redirectUrl = destinationUrl;
-      }
-    }
 
     const updatedQRCode = await qrcodeService.updateQRCode(id, updateData);
 
@@ -453,17 +406,13 @@ export const updateDestinationURL = async (req, res, next) => {
       return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
     }
 
-    if (qrCode.type !== 'dynamic') {
-      return error(
-        res,
-        'Seuls les QR codes dynamiques permettent le changement d\'URL de destination.',
-        [],
-        400
-      );
+    if (!qrCode.destinations || qrCode.destinations.length === 0) {
+      return error(res, "Le QR code n'a pas d'URL de destination configurée.", [], 400);
     }
 
     const { destinationUrl } = req.body;
-    const oldUrl = qrCode.destinationUrl;
+    // La destination active est la première de la liste (triée par ordre décroissant de createdAt)
+    const oldUrl = qrCode.destinations[0].url;
 
     const updatedQRCode = await qrcodeService.updateDestinationUrl(id, oldUrl, destinationUrl, req.user.id);
 
@@ -508,14 +457,18 @@ export const generateQRCodeImage = async (req, res, next) => {
 
     const format = req.query.format || 'png';
     const size = parseInt(req.query.size, 10) || 300;
-    const url = qrCode.type === 'dynamic' ? qrCode.redirectUrl : qrCode.destinationUrl;
+    
+    if (!qrCode.destinations || qrCode.destinations.length === 0) {
+      return error(res, 'Ce QR code n\'a pas d\'URL de destination.', [], 400);
+    }
+    const url = buildRedirectUrl(qrCode.uuid);
 
     const qrOptions = {
       width: size,
       margin: 2,
       color: {
-        dark: qrCode.color || '#000000',
-        light: qrCode.backgroundColor || '#FFFFFF',
+        dark: '#000000',
+        light: '#FFFFFF',
       },
     };
 
@@ -557,14 +510,18 @@ export const downloadQRCode = async (req, res, next) => {
 
     const format = req.query.format || 'png';
     const size = parseInt(req.query.size, 10) || 300;
-    const url = qrCode.type === 'dynamic' ? qrCode.redirectUrl : qrCode.destinationUrl;
+    
+    if (!qrCode.destinations || qrCode.destinations.length === 0) {
+      return error(res, 'Ce QR code n\'a pas d\'URL de destination.', [], 400);
+    }
+    const url = buildRedirectUrl(qrCode.uuid);
 
     const qrOptions = {
       width: size,
       margin: 2,
       color: {
-        dark: qrCode.color || '#000000',
-        light: qrCode.backgroundColor || '#FFFFFF',
+        dark: '#000000',
+        light: '#FFFFFF',
       },
     };
 

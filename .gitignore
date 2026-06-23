@@ -22,5 +22,6 @@ frontendHavas/*.njsproj
 frontendHavas/*.sln
 frontendHavas/*.sw?
 backendHavas/.env
-backendHavas/prisma
+backendHavas/prisma/migrations
 */node_modules
+frontendHavas/backendHavas.zip

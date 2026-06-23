@@ -13,8 +13,8 @@ export const createQRCode = async (data) => {
   return prisma.qRCode.create({
     data,
     include: {
-      collaborator: { select: { id: true, companyName: true } },
-      folder: { select: { id: true, name: true } },
+      folder: { select: { id: true, name: true, collaboratorId: true } },
+      destinations: true,
     },
   });
 };
@@ -46,8 +46,8 @@ export const findQRCodes = async (filters, pagination, orderBy) => {
       take: pagination.take,
       orderBy,
       include: {
-        collaborator: { select: { id: true, companyName: true } },
-        folder: { select: { id: true, name: true } },
+        folder: { select: { id: true, name: true, collaboratorId: true } },
+        destinations: { orderBy: { createdAt: 'desc' } },
         _count: { select: { scanHistories: true } },
       },
     }),
@@ -66,9 +66,8 @@ export const findQRCodeById = async (id) => {
   return prisma.qRCode.findUnique({
     where: { id },
     include: {
-      collaborator: { select: { id: true, companyName: true } },
-      folder: { select: { id: true, name: true } },
-      qrDestinations: { orderBy: { position: 'asc' } },
+      folder: { select: { id: true, name: true, collaboratorId: true } },
+      destinations: { orderBy: { createdAt: 'desc' } },
       _count: { select: { scanHistories: true } },
     },
   });
@@ -83,7 +82,8 @@ export const findQRCodeByUuid = async (uuid) => {
   return prisma.qRCode.findUnique({
     where: { uuid },
     include: {
-      qrDestinations: { orderBy: { position: 'asc' } },
+      destinations: { orderBy: { createdAt: 'desc' } },
+      folder: { select: { id: true, collaboratorId: true } },
     },
   });
 };
@@ -99,8 +99,8 @@ export const updateQRCode = async (id, data) => {
     where: { id },
     data,
     include: {
-      collaborator: { select: { id: true, companyName: true } },
-      folder: { select: { id: true, name: true } },
+      folder: { select: { id: true, name: true, collaboratorId: true } },
+      destinations: { orderBy: { createdAt: 'desc' } },
     },
   });
 };
@@ -127,41 +127,34 @@ export const setActive = async (id, isActive) => {
     where: { id },
     data: { isActive },
     include: {
-      collaborator: { select: { id: true, companyName: true } },
-      folder: { select: { id: true, name: true } },
+      folder: { select: { id: true, name: true, collaboratorId: true } },
     },
   });
 };
 
 /**
- * Update the destination URL and create a redirect history entry
+ * Update the destination URL by creating a new Destination entry
  * @param {number} id - QR code ID
- * @param {string} oldUrl - Previous destination URL
+ * @param {string} oldUrl - Previous destination URL (not used in DB anymore, just for audit)
  * @param {string} newUrl - New destination URL
  * @param {number} modifiedById - User ID who made the change
  * @returns {Promise<object>}
  */
 export const updateDestinationUrl = async (id, oldUrl, newUrl, modifiedById) => {
-  return prisma.$transaction(async (tx) => {
-    // Create redirect history entry
-    await tx.redirectHistory.create({
-      data: {
-        qrCodeId: id,
-        oldUrl,
-        newUrl,
-        modifiedById,
+  return prisma.qRCode.update({
+    where: { id },
+    data: {
+      destinations: {
+        create: {
+          title: 'Mise à jour URL',
+          url: newUrl,
+        },
       },
-    });
-
-    // Update the QR code
-    return tx.qRCode.update({
-      where: { id },
-      data: { destinationUrl: newUrl },
-      include: {
-        collaborator: { select: { id: true, companyName: true } },
-        folder: { select: { id: true, name: true } },
-      },
-    });
+    },
+    include: {
+      folder: { select: { id: true, name: true, collaboratorId: true } },
+      destinations: { orderBy: { createdAt: 'desc' } },
+    },
   });
 };
 
@@ -176,8 +169,8 @@ export const findAllQRCodes = async (filters, orderBy) => {
     where: filters,
     orderBy,
     include: {
-      collaborator: { select: { id: true, companyName: true } },
-      folder: { select: { id: true, name: true } },
+      folder: { select: { id: true, name: true, collaboratorId: true } },
+      destinations: { orderBy: { createdAt: 'desc' } },
       _count: { select: { scanHistories: true } },
     },
   });
