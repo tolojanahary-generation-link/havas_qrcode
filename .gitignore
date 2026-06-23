@@ -1,0 +1,26 @@
+# Logs
+frontendHavas/r/logs
+frontendHavas/*.log
+frontendHavas/npm-debug.log*
+frontendHavas/yarn-debug.log*
+frontendHavas/yarn-error.log*
+frontendHavas/pnpm-debug.log*
+frontendHavas/lerna-debug.log*
+
+frontendHavas/dist
+frontendHavas/dist-ssr
+frontendHavas/*.local
+
+# Editor directories and files
+*/.vscode/*
+*/!.vscode/extensions.json
+*/.idea
+frontendHavas/.DS_Store
+frontendHavas/*.suo
+frontendHavas/*.ntvs*
+frontendHavas/*.njsproj
+frontendHavas/*.sln
+frontendHavas/*.sw?
+backendHavas/.env
+backendHavas/prisma
+*/node_modules
