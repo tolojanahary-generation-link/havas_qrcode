@@ -260,8 +260,3 @@ export const getCurrentUser = async (req, res, next) => {
     next(err);
   }
 };
-
-const createUser = async (userData) => {
-  const hashedPassword = await bcrypt.hash(userData.password, SALT_ROUNDS);
-  
-}
