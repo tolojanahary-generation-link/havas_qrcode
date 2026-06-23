@@ -31,7 +31,7 @@ export const createUserRules = [
     .matches(/[0-9]/).withMessage('Le mot de passe doit contenir au moins un chiffre.'),
 
   body('phone')
-    .notEmpty().withMessage('Le numéro de téléphone est requis.')
+    .optional()
     .trim(),
 
   body('roleId')
@@ -39,7 +39,7 @@ export const createUserRules = [
     .isInt({ min: 1 }).withMessage('L\'identifiant du rôle doit être un entier positif.'),
 
   body('collaboratorId')
-    .notEmpty().withMessage('Le collaborator est requis.')
+    .optional()
     .isInt({ min: 1 }).withMessage('L\'identifiant du collaborator doit être un entier positif.'),
 ];
 

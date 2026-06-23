@@ -12,6 +12,7 @@ import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/pag
 import { getUploadPath } from '../utils/fileHelper.js';
 import * as qrcodeService from '../services/qrcodeService.js';
 import * as auditService from '../services/auditService.js';
+import { scopeFilters, isSuperAdmin, canAccessResource, canModifyResource } from '../utils/tenantHelper.js';
 
 const QR_BASE_URL = process.env.QR_BASE_URL || 'http://localhost:3000/api/scan';
 
@@ -36,6 +37,11 @@ export const createQRCode = async (req, res, next) => {
     const uuid = uuidv4();
     const redirectUrl = type === 'dynamic' ? buildRedirectUrl(uuid) : destinationUrl;
 
+    // Determine final collaboratorId based on role
+    const finalCollaboratorId = isSuperAdmin(req.user) 
+      ? (collaboratorId ? parseInt(collaboratorId, 10) : null)
+      : req.user.collaboratorId;
+
     const qrCode = await qrcodeService.createQRCode({
       uuid,
       name,
@@ -46,7 +52,7 @@ export const createQRCode = async (req, res, next) => {
       color: color || '#000000',
       backgroundColor: backgroundColor || '#FFFFFF',
       logo: logo || null,
-      collaboratorId: parseInt(collaboratorId, 10),
+      collaboratorId: finalCollaboratorId,
       folderId: folderId ? parseInt(folderId, 10) : null,
     });
 
@@ -88,8 +94,8 @@ export const createBulkQRCodesFromExcel = async (req, res, next) => {
       return error(res, 'Le fichier Excel est vide.', [], 400);
     }
 
-    // Validate required columns
-    const requiredColumns = ['name', 'destinationUrl', 'type', 'collaboratorId'];
+    // Validate required columns (collaboratorId is optional)
+    const requiredColumns = ['name', 'destinationUrl', 'type'];
     const headers = Object.keys(rows[0]);
     const missingColumns = requiredColumns.filter((col) => !headers.includes(col));
 
@@ -111,8 +117,8 @@ export const createBulkQRCodesFromExcel = async (req, res, next) => {
       const rowNum = i + 2; // Excel row number (1-indexed + header)
 
       // Validate row
-      if (!row.name || !row.destinationUrl || !row.type || !row.collaboratorId) {
-        errors.push({ row: rowNum, message: 'Données incomplètes' });
+      if (!row.name || !row.destinationUrl || !row.type) {
+        errors.push({ row: rowNum, message: 'Données incomplètes (name, destinationUrl, ou type manquants)' });
         continue;
       }
 
@@ -124,6 +130,11 @@ export const createBulkQRCodesFromExcel = async (req, res, next) => {
       const uuid = uuidv4();
       const redirectUrl = row.type === 'dynamic' ? buildRedirectUrl(uuid) : row.destinationUrl;
 
+      // Determine final collaboratorId based on role
+      const finalCollaboratorId = isSuperAdmin(req.user) 
+        ? (row.collaboratorId ? parseInt(row.collaboratorId, 10) : null)
+        : req.user.collaboratorId;
+
       qrCodesData.push({
         uuid,
         name: String(row.name),
@@ -134,7 +145,7 @@ export const createBulkQRCodesFromExcel = async (req, res, next) => {
         color: row.color || '#000000',
         backgroundColor: row.backgroundColor || '#FFFFFF',
         logo: row.logo || null,
-        collaboratorId: parseInt(row.collaboratorId, 10),
+        collaboratorId: finalCollaboratorId,
         folderId: row.folderId ? parseInt(row.folderId, 10) : null,
       });
     }
@@ -176,7 +187,7 @@ export const getQRCodes = async (req, res, next) => {
     );
 
     // Build filters
-    const filters = {};
+    const filters = scopeFilters(req.user, {});
 
     if (req.query.search) {
       filters.OR = [
@@ -191,7 +202,9 @@ export const getQRCodes = async (req, res, next) => {
       filters.type = req.query.type;
     }
 
-    if (req.query.collaboratorId) {
+    // Only allow SUPER_ADMIN to filter by a specific collaboratorId query param
+    // If not SUPER_ADMIN, scopeFilters already forces the correct condition
+    if (isSuperAdmin(req.user) && req.query.collaboratorId) {
       filters.collaboratorId = parseInt(req.query.collaboratorId, 10);
     }
 
@@ -226,6 +239,11 @@ export const getQRCodeById = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canAccessResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     return success(res, 'QR code récupéré avec succès.', { qrCode });
   } catch (err) {
     next(err);
@@ -245,7 +263,12 @@ export const updateQRCode = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
-    const { name, description, type, destinationUrl, folderId, color, backgroundColor, logo } = req.body;
+    // Check ownership
+    if (!canModifyResource(req.user, existingQRCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
+    const { name, description, type, destinationUrl, folderId, color, backgroundColor, logo, collaboratorId } = req.body;
 
     // Build update data
     const updateData = {};
@@ -255,6 +278,11 @@ export const updateQRCode = async (req, res, next) => {
     if (backgroundColor !== undefined) updateData.backgroundColor = backgroundColor;
     if (logo !== undefined) updateData.logo = logo;
     if (folderId !== undefined) updateData.folderId = folderId ? parseInt(folderId, 10) : null;
+    
+    // Only SUPER_ADMIN can change the collaboratorId of an existing qrcode
+    if (collaboratorId !== undefined && isSuperAdmin(req.user)) {
+      updateData.collaboratorId = collaboratorId ? parseInt(collaboratorId, 10) : null;
+    }
 
     // Handle type change
     if (type !== undefined) {
@@ -305,6 +333,11 @@ export const deleteQRCode = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canModifyResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     await qrcodeService.deleteQRCode(id);
 
     // Audit log
@@ -333,6 +366,11 @@ export const activateQRCode = async (req, res, next) => {
     const qrCode = await qrcodeService.findQRCodeById(id);
     if (!qrCode) {
       return error(res, 'QR code non trouvé.', [], 404);
+    }
+
+    // Check ownership
+    if (!canModifyResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
     }
 
     if (qrCode.isActive) {
@@ -370,6 +408,11 @@ export const deactivateQRCode = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canModifyResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     if (!qrCode.isActive) {
       return error(res, 'Le QR code est déjà désactivé.', [], 400);
     }
@@ -403,6 +446,11 @@ export const updateDestinationURL = async (req, res, next) => {
     const qrCode = await qrcodeService.findQRCodeById(id);
     if (!qrCode) {
       return error(res, 'QR code non trouvé.', [], 404);
+    }
+
+    // Check ownership
+    if (!canModifyResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
     }
 
     if (qrCode.type !== 'dynamic') {
@@ -453,6 +501,11 @@ export const generateQRCodeImage = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canAccessResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     const format = req.query.format || 'png';
     const size = parseInt(req.query.size, 10) || 300;
     const url = qrCode.type === 'dynamic' ? qrCode.redirectUrl : qrCode.destinationUrl;
@@ -495,6 +548,11 @@ export const downloadQRCode = async (req, res, next) => {
     const qrCode = await qrcodeService.findQRCodeById(id);
     if (!qrCode) {
       return error(res, 'QR code non trouvé.', [], 404);
+    }
+
+    // Check ownership
+    if (!canAccessResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
     }
 
     const format = req.query.format || 'png';

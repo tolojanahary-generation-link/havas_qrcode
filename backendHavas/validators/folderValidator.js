@@ -19,7 +19,7 @@ export const createFolderRules = [
     .trim(),
 
   body('collaboratorId')
-    .notEmpty().withMessage('Le collaborator est requis.')
+    .optional()
     .isInt({ min: 1 }).withMessage('L\'identifiant du collaborator doit être un entier positif.'),
 ];
 

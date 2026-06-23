@@ -7,7 +7,7 @@ import * as userController from '../controllers/userController.js';
 import * as userValidator from '../validators/userValidator.js';
 import { validate } from '../validators/validationMiddleware.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
-// import { authorize } from '../middlewares/authorizeMiddleware.js';
+import { authorize } from '../middlewares/authorizeMiddleware.js';
 
 const router = express.Router();
 
@@ -27,7 +27,7 @@ router.post('/', userValidator.createUserRules, validate, userController.createU
 router.put('/:id', userValidator.updateUserRules, validate, userController.updateUser);
 
 // Delete a user
-router.delete('/:id', userValidator.userIdRule, validate, userController.deleteUser);
+router.delete('/:id', authorize('SUPER_ADMIN'), userValidator.userIdRule, validate, userController.deleteUser);
 
 // Activate/Deactivate
 router.patch('/:id/activate', userValidator.userIdRule, validate, userController.activateUser);

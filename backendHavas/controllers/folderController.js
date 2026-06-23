@@ -6,6 +6,7 @@ import { success, error, paginated } from '../utils/responseHelper.js';
 import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/paginationHelper.js';
 import * as folderService from '../services/folderService.js';
 import * as auditService from '../services/auditService.js';
+import { scopeFilters, isSuperAdmin, canAccessResource, canModifyResource } from '../utils/tenantHelper.js';
 
 /**
  * POST /api/folders
@@ -15,10 +16,15 @@ export const createFolder = async (req, res, next) => {
   try {
     const { name, description, collaboratorId } = req.body;
 
+    // Determine final collaboratorId based on role
+    const finalCollaboratorId = isSuperAdmin(req.user) 
+      ? (collaboratorId ? parseInt(collaboratorId, 10) : null)
+      : req.user.collaboratorId;
+
     const folder = await folderService.createFolder({
       name,
       description: description || null,
-      collaboratorId: parseInt(collaboratorId, 10),
+      collaboratorId: finalCollaboratorId,
     });
 
     // Audit log
@@ -47,7 +53,7 @@ export const getFolders = async (req, res, next) => {
     const orderBy = buildSorting(req.query, ['createdAt', 'name'], 'createdAt', 'desc');
 
     // Build filters
-    const filters = {};
+    const filters = scopeFilters(req.user, {});
 
     if (req.query.search) {
       filters.OR = [
@@ -56,7 +62,9 @@ export const getFolders = async (req, res, next) => {
       ];
     }
 
-    if (req.query.collaboratorId) {
+    // Only allow SUPER_ADMIN to filter by a specific collaboratorId query param
+    // If not SUPER_ADMIN, scopeFilters already forces the correct condition
+    if (isSuperAdmin(req.user) && req.query.collaboratorId) {
       filters.collaboratorId = parseInt(req.query.collaboratorId, 10);
     }
 
@@ -83,6 +91,11 @@ export const getFolderById = async (req, res, next) => {
       return error(res, 'Dossier non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canAccessResource(req.user, folder)) {
+      return error(res, 'Accès refusé. Ce dossier n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     return success(res, 'Dossier récupéré avec succès.', { dossier: folder });
   } catch (err) {
     next(err);
@@ -103,13 +116,22 @@ export const updateFolder = async (req, res, next) => {
       return error(res, 'Dossier non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canModifyResource(req.user, existingFolder)) {
+      return error(res, 'Accès refusé. Ce dossier n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     const { name, description, collaboratorId } = req.body;
 
     // Build update data
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
-    if (collaboratorId !== undefined) updateData.collaboratorId = parseInt(collaboratorId, 10);
+    
+    // Only SUPER_ADMIN can change the collaboratorId of an existing folder
+    if (collaboratorId !== undefined && isSuperAdmin(req.user)) {
+      updateData.collaboratorId = collaboratorId ? parseInt(collaboratorId, 10) : null;
+    }
 
     const updatedFolder = await folderService.updateFolder(id, updateData);
 
@@ -139,6 +161,11 @@ export const deleteFolder = async (req, res, next) => {
     const folder = await folderService.findFolderById(id);
     if (!folder) {
       return error(res, 'Dossier non trouvé.', [], 404);
+    }
+
+    // Check ownership (even though SUPER_ADMIN is enforced by routes, we can leave this for safety)
+    if (!canModifyResource(req.user, folder)) {
+      return error(res, 'Accès refusé. Ce dossier n\'appartient pas à votre collaborateur.', [], 403);
     }
 
     // Check for related QR codes

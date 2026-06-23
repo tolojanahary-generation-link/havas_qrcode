@@ -10,6 +10,7 @@ import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/pag
 import * as qrcodeService from '../services/qrcodeService.js';
 import * as importService from '../services/importService.js';
 import * as auditService from '../services/auditService.js';
+import { isSuperAdmin } from '../utils/tenantHelper.js';
 
 const QR_BASE_URL = process.env.QR_BASE_URL || 'http://localhost:3000/api/scan';
 
@@ -65,8 +66,8 @@ export const validateExcel = async (req, res, next) => {
       return error(res, 'Le fichier Excel est vide.', [], 400);
     }
 
-    // Required columns
-    const requiredColumns = ['name', 'destinationUrl', 'type', 'collaboratorId'];
+    // Required columns (collaboratorId is optional now)
+    const requiredColumns = ['name', 'destinationUrl', 'type'];
     const headers = Object.keys(rows[0]);
     const missingColumns = requiredColumns.filter((col) => !headers.includes(col));
 
@@ -93,8 +94,8 @@ export const validateExcel = async (req, res, next) => {
       if (!row.type || !['static', 'dynamic'].includes(row.type)) {
         rowErrors.push('Le type doit être "static" ou "dynamic"');
       }
-      if (!row.collaboratorId || isNaN(parseInt(row.collaboratorId, 10))) {
-        rowErrors.push('L\'identifiant du collaborator est requis et doit être un nombre');
+      if (row.collaboratorId && isNaN(parseInt(row.collaboratorId, 10))) {
+        rowErrors.push('L\'identifiant du collaborator doit être un nombre');
       }
 
       if (rowErrors.length > 0) {
@@ -152,7 +153,7 @@ export const importExcel = async (req, res, next) => {
 
       try {
         // Validate row
-        if (!row.name || !row.destinationUrl || !row.type || !row.collaboratorId) {
+        if (!row.name || !row.destinationUrl || !row.type) {
           throw new Error('Données incomplètes');
         }
 
@@ -162,6 +163,11 @@ export const importExcel = async (req, res, next) => {
 
         const uuid = uuidv4();
         const redirectUrl = row.type === 'dynamic' ? `${QR_BASE_URL}/${uuid}` : row.destinationUrl;
+
+        // Determine final collaboratorId based on role
+        const finalCollaboratorId = isSuperAdmin(req.user) 
+          ? (row.collaboratorId ? parseInt(row.collaboratorId, 10) : null)
+          : req.user.collaboratorId;
 
         await qrcodeService.createQRCode({
           uuid,
@@ -173,7 +179,7 @@ export const importExcel = async (req, res, next) => {
           color: row.color || '#000000',
           backgroundColor: row.backgroundColor || '#FFFFFF',
           logo: row.logo || null,
-          collaboratorId: parseInt(row.collaboratorId, 10),
+          collaboratorId: finalCollaboratorId,
           folderId: row.folderId ? parseInt(row.folderId, 10) : null,
         });
 

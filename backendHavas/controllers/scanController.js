@@ -6,6 +6,7 @@ import { success, error, paginated } from '../utils/responseHelper.js';
 import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/paginationHelper.js';
 import * as scanService from '../services/scanService.js';
 import * as qrcodeService from '../services/qrcodeService.js';
+import { isSuperAdmin, canAccessResource } from '../utils/tenantHelper.js';
 
 /**
  * Parse user agent string to extract browser, OS, and device
@@ -113,6 +114,11 @@ export const getScanHistory = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canAccessResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     const pagination = buildPagination(req.query);
     const orderBy = buildSorting(req.query, ['createdAt', 'browser', 'device', 'country'], 'createdAt', 'desc');
 
@@ -160,6 +166,11 @@ export const getQRCodeStatistics = async (req, res, next) => {
       return error(res, 'QR code non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canAccessResource(req.user, qrCode)) {
+      return error(res, 'Accès refusé. Ce QR code n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     const statistics = await scanService.getQRCodeStatistics(qrCodeId);
 
     return success(res, 'Statistiques du QR code récupérées avec succès.', {
@@ -183,7 +194,10 @@ export const getQRCodeStatistics = async (req, res, next) => {
  */
 export const getDashboardStatistics = async (req, res, next) => {
   try {
-    const collaboratorId = req.query.collaboratorId ? parseInt(req.query.collaboratorId, 10) : null;
+    // Determine final collaboratorId based on role
+    const collaboratorId = isSuperAdmin(req.user)
+      ? (req.query.collaboratorId ? parseInt(req.query.collaboratorId, 10) : null)
+      : req.user.collaboratorId;
 
     const statistics = await scanService.getDashboardStatistics(collaboratorId);
 

@@ -7,6 +7,7 @@ import * as folderController from '../controllers/folderController.js';
 import * as folderValidator from '../validators/folderValidator.js';
 import { validate } from '../validators/validationMiddleware.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/authorizeMiddleware.js';
 
 const router = express.Router();
 
@@ -26,6 +27,6 @@ router.post('/', folderValidator.createFolderRules, validate, folderController.c
 router.put('/:id', folderValidator.updateFolderRules, validate, folderController.updateFolder);
 
 // Delete a folder
-router.delete('/:id', folderValidator.folderIdRule, validate, folderController.deleteFolder);
+router.delete('/:id', authorize('SUPER_ADMIN'), folderValidator.folderIdRule, validate, folderController.deleteFolder);
 
 export default router;

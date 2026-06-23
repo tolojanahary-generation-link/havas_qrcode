@@ -7,6 +7,7 @@ import * as qrcodeController from '../controllers/qrcodeController.js';
 import * as qrcodeValidator from '../validators/qrcodeValidator.js';
 import { validate } from '../validators/validationMiddleware.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/authorizeMiddleware.js';
 import { uploadExcel } from '../middlewares/uploadMiddleware.js';
 
 const router = express.Router();
@@ -44,6 +45,6 @@ router.patch('/:id/activate', qrcodeValidator.qrcodeIdRule, validate, qrcodeCont
 router.patch('/:id/deactivate', qrcodeValidator.qrcodeIdRule, validate, qrcodeController.deactivateQRCode);
 
 // Delete a QR code
-router.delete('/:id', qrcodeValidator.qrcodeIdRule, validate, qrcodeController.deleteQRCode);
+router.delete('/:id', authorize('SUPER_ADMIN'), qrcodeValidator.qrcodeIdRule, validate, qrcodeController.deleteQRCode);
 
 export default router;

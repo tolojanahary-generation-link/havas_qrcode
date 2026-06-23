@@ -5,6 +5,8 @@
 import { success, error, paginated } from '../utils/responseHelper.js';
 import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/paginationHelper.js';
 import * as auditService from '../services/auditService.js';
+import * as userService from '../services/userService.js';
+import { isSuperAdmin, canAccessResource } from '../utils/tenantHelper.js';
 
 /**
  * GET /api/audit/logs
@@ -41,6 +43,11 @@ export const getAuditLogs = async (req, res, next) => {
       if (req.query.endDate) filters.createdAt.lte = new Date(req.query.endDate);
     }
 
+    // Scoping pour les collaborateurs normaux
+    if (!isSuperAdmin(req.user)) {
+      filters.user = { collaboratorId: req.user.collaboratorId };
+    }
+
     const { logs, total } = await auditService.getLogs(filters, pagination, orderBy);
     const meta = buildPaginationMeta(total, pagination.page, pagination.limit);
 
@@ -61,6 +68,16 @@ export const getUserLogs = async (req, res, next) => {
 
     if (isNaN(userId) || userId < 1) {
       return error(res, 'L\'identifiant de l\'utilisateur est invalide.', [], 400);
+    }
+
+    // Security check: can the user view logs for this specific user?
+    const targetUser = await userService.findUserById(userId);
+    if (!targetUser) {
+      return error(res, 'Utilisateur non trouvé.', [], 404);
+    }
+
+    if (!canAccessResource(req.user, targetUser)) {
+      return error(res, 'Accès refusé. Vous ne pouvez pas voir les logs de cet utilisateur.', [], 403);
     }
 
     const pagination = buildPagination(req.query);

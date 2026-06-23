@@ -27,7 +27,7 @@ export const createQRCodeRules = [
     .isURL().withMessage('L\'URL de destination est invalide.'),
 
   body('collaboratorId')
-    .notEmpty().withMessage('Le collaborator est requis.')
+    .optional()
     .isInt({ min: 1 }).withMessage('L\'identifiant du collaborator doit être un entier positif.'),
 
   body('folderId')

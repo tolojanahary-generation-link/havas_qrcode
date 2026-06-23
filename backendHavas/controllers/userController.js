@@ -7,6 +7,7 @@ import { success, error, paginated } from '../utils/responseHelper.js';
 import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/paginationHelper.js';
 import * as userService from '../services/userService.js';
 import * as auditService from '../services/auditService.js';
+import { scopeFilters, isSuperAdmin, canAccessResource, canModifyResource } from '../utils/tenantHelper.js';
 
 const SALT_ROUNDS = 12;
 
@@ -29,16 +30,21 @@ export const createUser = async (req, res, next) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+    // Determine final collaboratorId based on role
+    const finalCollaboratorId = isSuperAdmin(req.user) 
+      ? (collaboratorId ? parseInt(collaboratorId, 10) : null)
+      : req.user.collaboratorId;
+
     // Create the user
     const user = await userService.createUser({
       firstname,
       lastname,
       email,
       password: hashedPassword,
-      phone,
+      phone: phone || null,
       avatar: avatar || null,
       roleId: parseInt(roleId, 10),
-      collaboratorId: parseInt(collaboratorId, 10),
+      collaboratorId: finalCollaboratorId,
     });
 
     // Audit log
@@ -67,7 +73,7 @@ export const getUsers = async (req, res, next) => {
     const orderBy = buildSorting(req.query, ['createdAt', 'firstname', 'lastname', 'email'], 'createdAt', 'desc');
 
     // Build filters
-    const filters = {};
+    const filters = scopeFilters(req.user, {});
 
     if (req.query.search) {
       filters.OR = [
@@ -81,7 +87,9 @@ export const getUsers = async (req, res, next) => {
       filters.roleId = parseInt(req.query.roleId, 10);
     }
 
-    if (req.query.collaboratorId) {
+    // Only allow SUPER_ADMIN to filter by a specific collaboratorId query param
+    // If not SUPER_ADMIN, scopeFilters already forces the correct condition
+    if (isSuperAdmin(req.user) && req.query.collaboratorId) {
       filters.collaboratorId = parseInt(req.query.collaboratorId, 10);
     }
 
@@ -112,6 +120,11 @@ export const getUserById = async (req, res, next) => {
       return error(res, 'Utilisateur non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canAccessResource(req.user, user)) {
+      return error(res, 'Accès refusé. Cet utilisateur n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     return success(res, 'Utilisateur récupéré avec succès.', { utilisateur: user });
   } catch (err) {
     next(err);
@@ -132,6 +145,11 @@ export const updateUser = async (req, res, next) => {
       return error(res, 'Utilisateur non trouvé.', [], 404);
     }
 
+    // Check ownership
+    if (!canModifyResource(req.user, existingUser)) {
+      return error(res, 'Accès refusé. Cet utilisateur n\'appartient pas à votre collaborateur.', [], 403);
+    }
+
     const { firstname, lastname, email, password, phone, avatar, roleId, collaboratorId } = req.body;
 
     // Check email uniqueness if email is being changed
@@ -149,10 +167,14 @@ export const updateUser = async (req, res, next) => {
     if (firstname !== undefined) updateData.firstname = firstname;
     if (lastname !== undefined) updateData.lastname = lastname;
     if (email !== undefined) updateData.email = email;
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) updateData.phone = phone || null;
     if (avatar !== undefined) updateData.avatar = avatar;
     if (roleId !== undefined) updateData.roleId = parseInt(roleId, 10);
-    if (collaboratorId !== undefined) updateData.collaboratorId = parseInt(collaboratorId, 10);
+    
+    // Only SUPER_ADMIN can change the collaboratorId of an existing user
+    if (collaboratorId !== undefined && isSuperAdmin(req.user)) {
+      updateData.collaboratorId = collaboratorId ? parseInt(collaboratorId, 10) : null;
+    }
 
     // Hash password if provided
     if (password) {
@@ -189,6 +211,11 @@ export const deleteUser = async (req, res, next) => {
     if (!user) {
       return error(res, 'Utilisateur non trouvé.', [], 404);
     }
+    
+    // Check ownership
+    if (!canModifyResource(req.user, user)) {
+      return error(res, 'Accès refusé. Cet utilisateur n\'appartient pas à votre collaborateur.', [], 403);
+    }
 
     // Prevent self-deletion
     if (req.user.id === id) {
@@ -224,6 +251,11 @@ export const activateUser = async (req, res, next) => {
     if (!user) {
       return error(res, 'Utilisateur non trouvé.', [], 404);
     }
+    
+    // Check ownership
+    if (!canModifyResource(req.user, user)) {
+      return error(res, 'Accès refusé. Cet utilisateur n\'appartient pas à votre collaborateur.', [], 403);
+    }
 
     if (user.isActive) {
       return error(res, 'L\'utilisateur est déjà actif.', [], 400);
@@ -257,6 +289,11 @@ export const deactivateUser = async (req, res, next) => {
     const user = await userService.findUserById(id);
     if (!user) {
       return error(res, 'Utilisateur non trouvé.', [], 404);
+    }
+    
+    // Check ownership
+    if (!canModifyResource(req.user, user)) {
+      return error(res, 'Accès refusé. Cet utilisateur n\'appartient pas à votre collaborateur.', [], 403);
     }
 
     if (!user.isActive) {

@@ -6,6 +6,7 @@ import { success, error, paginated } from '../utils/responseHelper.js';
 import { buildPagination, buildPaginationMeta, buildSorting } from '../utils/paginationHelper.js';
 import * as collaboratorService from '../services/collaboratorService.js';
 import * as auditService from '../services/auditService.js';
+import { isSuperAdmin } from '../utils/tenantHelper.js';
 
 /**
  * POST /api/collaborators
@@ -13,7 +14,7 @@ import * as auditService from '../services/auditService.js';
  */
 export const createCollaborator = async (req, res, next) => {
   try {
-    const { companyName, contactName, email, phone, address, city, country, logo } = req.body;
+    const { companyName, email, phone, address, city, country, logo } = req.body;
 
     // Check for duplicate email
     const exists = await collaboratorService.emailExists(email);
@@ -67,6 +68,14 @@ export const getCollaborators = async (req, res, next) => {
     // Build filters
     const filters = {};
 
+    // Restrict non-admins to their own collaborator entity
+    if (!isSuperAdmin(req.user)) {
+      if (!req.user.collaboratorId) {
+        return paginated(res, 'Aucun collaborateur assigné.', { collaborators: [] }, buildPaginationMeta(0, pagination.page, pagination.limit));
+      }
+      filters.id = req.user.collaboratorId;
+    }
+
     if (req.query.search) {
       filters.OR = [
         { companyName: { contains: req.query.search, mode: 'insensitive' } },
@@ -104,6 +113,11 @@ export const getCollaboratorById = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
 
+    // Restrict access
+    if (!isSuperAdmin(req.user) && req.user.collaboratorId !== id) {
+      return error(res, 'Accès refusé.', [], 403);
+    }
+
     const collaborator = await collaboratorService.findCollaboratorById(id);
 
     if (!collaborator) {
@@ -123,6 +137,11 @@ export const getCollaboratorById = async (req, res, next) => {
 export const updateCollaborator = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
+
+    // Restrict access
+    if (!isSuperAdmin(req.user) && req.user.collaboratorId !== id) {
+      return error(res, 'Accès refusé.', [], 403);
+    }
 
     // Check if collaborator exists
     const existingCollaborator = await collaboratorService.findCollaboratorById(id);

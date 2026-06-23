@@ -7,16 +7,19 @@ import PDFDocument from 'pdfkit';
 import { Parser as CsvParser } from 'json2csv';
 import { success, error } from '../utils/responseHelper.js';
 import * as qrcodeService from '../services/qrcodeService.js';
+import { scopeFilters, isSuperAdmin } from '../utils/tenantHelper.js';
 
 /**
  * Build filters from query params (shared across export methods)
+ * @param {object} user - Express req.user
  * @param {object} query - Express req.query
  * @returns {object} Prisma where clause
  */
-const buildExportFilters = (query) => {
-  const filters = {};
+const buildExportFilters = (user, query) => {
+  const filters = scopeFilters(user, {});
 
-  if (query.collaboratorId) {
+  // Only allow SUPER_ADMIN to override collaboratorId filter
+  if (isSuperAdmin(user) && query.collaboratorId) {
     filters.collaboratorId = parseInt(query.collaboratorId, 10);
   }
 
@@ -74,7 +77,7 @@ const transformForExport = (qrCodes) => {
  */
 export const exportExcel = async (req, res, next) => {
   try {
-    const filters = buildExportFilters(req.query);
+    const filters = buildExportFilters(req.user, req.query);
     const qrCodes = await qrcodeService.findAllQRCodes(filters, { createdAt: 'desc' });
 
     if (qrCodes.length === 0) {
@@ -128,7 +131,7 @@ export const exportExcel = async (req, res, next) => {
  */
 export const exportCSV = async (req, res, next) => {
   try {
-    const filters = buildExportFilters(req.query);
+    const filters = buildExportFilters(req.user, req.query);
     const qrCodes = await qrcodeService.findAllQRCodes(filters, { createdAt: 'desc' });
 
     if (qrCodes.length === 0) {
@@ -159,7 +162,7 @@ export const exportCSV = async (req, res, next) => {
  */
 export const exportPDF = async (req, res, next) => {
   try {
-    const filters = buildExportFilters(req.query);
+    const filters = buildExportFilters(req.user, req.query);
     const qrCodes = await qrcodeService.findAllQRCodes(filters, { createdAt: 'desc' });
 
     if (qrCodes.length === 0) {
